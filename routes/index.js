@@ -1,0 +1,43 @@
+import express from 'express';
+import healthRoutes from './health.js';
+import authRoutes from './auth.js';
+import farmerRoutes from './farmers.js';
+import cropCycleRoutes from './CropCycle.js';
+import farmManagerRoutes from './farmManager.js';
+import harvestRoutes from './harvest.js';
+import processingBatchRoutes from './processingBatches.js';
+import stockRoutes from './stock.js';
+import notificationRoutes from './notifications.js';
+import roomRoutes from './rooms.js';
+import exportRoutes from './export.js';
+import traceabilityRoutes from './traceability.js';
+import adminRoutes from './adminRoutes.js';
+import eventLogRoutes from './eventLogs.js';
+import fleetRoutes from './fleet.js';
+import contactRoutes from './contact.js';
+import cropVarietyRoutes from './cropVarieties.js';
+import packagingRoutes from './packaging.js';
+
+const router = express.Router();
+const apiVersion = '/api/v1';
+
+router.use(`${apiVersion}/health`, healthRoutes);
+router.use(`${apiVersion}/auth`, authRoutes);
+router.use(`${apiVersion}/farmers`, farmerRoutes);
+router.use(`${apiVersion}/crop-cycles`, cropCycleRoutes);
+router.use(`${apiVersion}/farm-manager`, farmManagerRoutes);
+router.use(`${apiVersion}/harvest-declarations`, harvestRoutes);
+router.use(`${apiVersion}/processing-batches`, processingBatchRoutes);
+router.use(`${apiVersion}/stock`, stockRoutes);
+router.use(`${apiVersion}/notifications`, notificationRoutes);
+router.use(`${apiVersion}/rooms`, roomRoutes);
+router.use(`${apiVersion}/traceability`, traceabilityRoutes);
+router.use(`${apiVersion}/admin`, adminRoutes);
+router.use(`${apiVersion}/event-logs`, eventLogRoutes);
+router.use(`${apiVersion}/fleet`, fleetRoutes);
+router.use(`${apiVersion}/contact`, contactRoutes);
+router.use(`${apiVersion}/crop-varieties`, cropVarietyRoutes);
+router.use(`${apiVersion}/packaging`, packagingRoutes);
+router.use(`${apiVersion}`, exportRoutes);
+
+export default router;
