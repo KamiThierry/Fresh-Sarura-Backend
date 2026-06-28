@@ -2,21 +2,24 @@ import nodemailer from 'nodemailer';
 import logger from './logger.js';
 
 const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-    },
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true,
+  family: 4,
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
 });
 
 export const sendPasswordResetEmail = async ({ email, resetToken, userName }) => {
-    const resetURL = `http://localhost:5173/reset-password?token=${resetToken}`;
-    
-    const mailOptions = {
-        from: `"FreshSarura Security" <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject: '🔐 Reset your Fresh Sarura password',
-        html: `
+  const resetURL = `http://localhost:5173/reset-password?token=${resetToken}`;
+
+  const mailOptions = {
+    from: `"FreshSarura Security" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: '🔐 Reset your Fresh Sarura password',
+    html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; padding: 20px; border: 1px solid #e5e7eb; border-radius: 16px;">
           
           <!-- Message -->
@@ -51,23 +54,23 @@ export const sendPasswordResetEmail = async ({ email, resetToken, userName }) =>
 
         </div>
         `
-    };
+  };
 
-    try {
-        await transporter.sendMail(mailOptions);
-        logger.info(`Password reset email sent to: ${email}`);
-    } catch (error) {
-        logger.error(`Failed to send reset email to ${email}: ${error.message}`);
-        throw error;
-    }
+  try {
+    await transporter.sendMail(mailOptions);
+    logger.info(`Password reset email sent to: ${email}`);
+  } catch (error) {
+    logger.error(`Failed to send reset email to ${email}: ${error.message}`);
+    throw error;
+  }
 };
 
 export const sendFarmerWelcomeEmail = async ({ farmerName, email, password }) => {
-    const mailOptions = {
-        from: `"FreshSarura Platform" <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject: '🌿 Welcome to Fresh Sarura — Your Account is Ready',
-        html: `
+  const mailOptions = {
+    from: `"FreshSarura Platform" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: '🌿 Welcome to Fresh Sarura — Your Account is Ready',
+    html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; padding: 20px; border: 1px solid #e5e7eb; border-radius: 16px;">
           
           <!-- Welcome Message -->
@@ -116,32 +119,32 @@ export const sendFarmerWelcomeEmail = async ({ farmerName, email, password }) =>
 
         </div>
         `
-    };
+  };
 
-    try {
-        await transporter.sendMail(mailOptions);
-        logger.info(`Welcome email sent to: ${email}`);
-    } catch (error) {
-        logger.error(`Failed to send email to ${email}: ${error.message}`);
-        throw error;
-    }
+  try {
+    await transporter.sendMail(mailOptions);
+    logger.info(`Welcome email sent to: ${email}`);
+  } catch (error) {
+    logger.error(`Failed to send email to ${email}: ${error.message}`);
+    throw error;
+  }
 };
 
 export const sendUserWelcomeEmail = async ({ name, email, password, role }) => {
-    const roleLabels = {
-        admin: 'Administrator',
-        production_manager: 'Production Manager',
-        farm_manager: 'Farm Manager',
-        logistic_officer: 'Logistics Officer',
-        quality_officer: 'QC Officer',
-    };
-    const roleLabel = roleLabels[role] || role;
+  const roleLabels = {
+    admin: 'Administrator',
+    production_manager: 'Production Manager',
+    farm_manager: 'Farm Manager',
+    logistic_officer: 'Logistics Officer',
+    quality_officer: 'QC Officer',
+  };
+  const roleLabel = roleLabels[role] || role;
 
-    const mailOptions = {
-        from: `"FreshSarura Platform" <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject: '🌿 Welcome to Fresh Sarura — Your Account is Ready',
-        html: `
+  const mailOptions = {
+    from: `"FreshSarura Platform" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: '🌿 Welcome to Fresh Sarura — Your Account is Ready',
+    html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; padding: 20px; border: 1px solid #e5e7eb; border-radius: 16px;">
           
           <!-- Welcome Message -->
@@ -190,23 +193,23 @@ export const sendUserWelcomeEmail = async ({ name, email, password, role }) => {
 
         </div>
         `
-    };
+  };
 
-    try {
-        await transporter.sendMail(mailOptions);
-        logger.info(`Welcome email sent to: ${email}`);
-    } catch (error) {
-        logger.error(`Failed to send welcome email to ${email}: ${error.message}`);
-        throw error;
-    }
+  try {
+    await transporter.sendMail(mailOptions);
+    logger.info(`Welcome email sent to: ${email}`);
+  } catch (error) {
+    logger.error(`Failed to send welcome email to ${email}: ${error.message}`);
+    throw error;
+  }
 };
 
 export const sendContactReplyEmail = async ({ toName, toEmail, inquiryType, originalMsg, replyNote, adminName }) => {
-    const mailOptions = {
-        from: `"FreshSarura" <${process.env.EMAIL_USER}>`,
-        to: toEmail,
-        subject: `Re: Your ${inquiryType} Inquiry — Fresh Sarura`,
-        html: `
+  const mailOptions = {
+    from: `"FreshSarura" <${process.env.EMAIL_USER}>`,
+    to: toEmail,
+    subject: `Re: Your ${inquiryType} Inquiry — Fresh Sarura`,
+    html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; padding: 20px; border: 1px solid #e5e7eb; border-radius: 16px;">
 
           <div style="padding: 8px 12px;">
@@ -239,23 +242,23 @@ export const sendContactReplyEmail = async ({ toName, toEmail, inquiryType, orig
 
         </div>
         `
-    };
+  };
 
-    try {
-        await transporter.sendMail(mailOptions);
-        logger.info(`Contact reply sent to: ${toEmail}`);
-    } catch (error) {
-        logger.error(`Failed to send reply to ${toEmail}: ${error.message}`);
-        throw error;
-    }
+  try {
+    await transporter.sendMail(mailOptions);
+    logger.info(`Contact reply sent to: ${toEmail}`);
+  } catch (error) {
+    logger.error(`Failed to send reply to ${toEmail}: ${error.message}`);
+    throw error;
+  }
 };
 
 export const sendOtpEmail = async ({ email, userName, otp }) => {
-    const mailOptions = {
-        from: `"FreshSarura Security" <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject: 'Your FreshSarura Login Code',
-        html: `
+  const mailOptions = {
+    from: `"FreshSarura Security" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: 'Your FreshSarura Login Code',
+    html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; padding: 20px; border: 1px solid #e5e7eb; border-radius: 16px;">
           <div style="padding: 8px 12px;">
             <h2 style="color: #065f46; font-size: 20px; margin: 0 0 12px 0;">Hello, ${userName}</h2>
@@ -276,13 +279,13 @@ export const sendOtpEmail = async ({ email, userName, otp }) => {
           </div>
         </div>
         `
-    };
+  };
 
-    try {
-        await transporter.sendMail(mailOptions);
-        logger.info(`OTP email sent to: ${email}`);
-    } catch (error) {
-        logger.error(`Failed to send OTP email to ${email}: ${error.message}`);
-        throw error;
-    }
+  try {
+    await transporter.sendMail(mailOptions);
+    logger.info(`OTP email sent to: ${email}`);
+  } catch (error) {
+    logger.error(`Failed to send OTP email to ${email}: ${error.message}`);
+    throw error;
+  }
 };
