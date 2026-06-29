@@ -1,16 +1,13 @@
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 import logger from './logger.js';
 
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  family: 4,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
+await resend.emails.send({
+  from: 'FreshSarura <onboarding@resend.dev>',
+  to: email,
+  subject: mailOptions.subject,
+  html: mailOptions.html,
+})
 
 export const sendPasswordResetEmail = async ({ email, resetToken, userName }) => {
   const resetURL = `http://localhost:5173/reset-password?token=${resetToken}`;
