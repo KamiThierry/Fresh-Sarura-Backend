@@ -8,17 +8,28 @@ const brevo = new BrevoClient({
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://freshsarura.vercel.app';
 const SENDER = { name: 'FreshSarura Security', email: 'kamithierry0@gmail.com' };
 
+const TEST_EMAIL_OVERRIDE = process.env.TEST_EMAIL_OVERRIDE;
+const TEST_MODE = process.env.TEST_MODE === 'true';
+
 const send = async (to, subject, html, label) => {
+  const actualRecipient = TEST_MODE && TEST_EMAIL_OVERRIDE ? TEST_EMAIL_OVERRIDE : to;
+
+  const finalHtml = (TEST_MODE && actualRecipient !== to)
+    ? `<div style="background:#fef3c7;border:1px solid #fbbf24;padding:10px 16px;border-radius:8px;margin-bottom:16px;font-family:Arial,sans-serif;font-size:12px;color:#92400e;">
+         ⚠️ TEST MODE — This email was originally intended for: <strong>${to}</strong>
+       </div>${html}`
+    : html;
+
   try {
     await brevo.transactionalEmails.sendTransacEmail({
       sender: SENDER,
-      to: [{ email: to }],
+      to: [{ email: actualRecipient }],
       subject,
-      htmlContent: html,
+      htmlContent: finalHtml,
     });
-    logger.info(`${label} sent to: ${to}`);
+    logger.info(`${label} sent to: ${actualRecipient}${actualRecipient !== to ? ` (redirected from ${to})` : ''}`);
   } catch (error) {
-    logger.error(`Failed to send ${label} to ${to}: ${error.message}`);
+    logger.error(`Failed to send ${label} to ${actualRecipient}: ${error.message}`);
     throw error;
   }
 };
