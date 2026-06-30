@@ -14,20 +14,6 @@ import { errorHandler, notFound } from './middleware/errorHandler.js';
 import routes from './routes/index.js';
 import logger from './utils/logger.js';
 
-
-import express from 'express';
-import mongoose from 'mongoose';
-import cors from 'cors';
-import helmet from 'helmet';
-import compression from 'compression';
-import config from './config/environment.js';
-import { connectDB } from './config/database.js';
-import morganMiddleware from './middleware/logger.js';
-import { requestLogger, responseTime } from './middleware/requests.js';
-import { errorHandler, notFound } from './middleware/errorHandler.js';
-import routes from './routes/index.js';
-import logger from './utils/logger.js';
-
 const app = express();
 
 // ============================================
