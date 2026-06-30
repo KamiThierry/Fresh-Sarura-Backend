@@ -211,3 +211,28 @@ export const sendOtpEmail = async ({ email, userName, otp }) => {
         </div>
     `, 'OTP email');
 };
+
+export const sendSystemNotificationEmail = async ({ email, userName, title, message, link }) => {
+    const actionURL = link ? `${FRONTEND_URL}${link}` : FRONTEND_URL;
+    await send(email, title, `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; padding: 20px; border: 1px solid #e5e7eb; border-radius: 16px;">
+          <div style="padding: 8px 12px;">
+            <h2 style="color: #065f46; font-size: 18px; margin: 0 0 12px 0;">${title}</h2>
+            <p style="color: #4b5563; line-height: 1.6; margin: 0 0 20px 0;">${message}</p>
+            ${link ? `
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${actionURL}" 
+                 style="display: inline-block; background: #10b981; color: white; padding: 12px 32px; border-radius: 12px; text-decoration: none; font-weight: bold; font-size: 14px;">
+                View in Fresh Sarura →
+              </a>
+            </div>` : ''}
+            <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 16px 0 0 0;">
+              Hello ${userName}, this is an automated notification from Fresh Sarura.
+            </p>
+          </div>
+          <div style="text-align: center; padding: 20px 16px 8px 16px; border-top: 1px solid #f3f4f6; margin-top: 16px;">
+            <p style="color: #9ca3af; font-size: 11px; margin: 0;"><strong>Fresh Sarura</strong> · Export & Farmer Hub · Rwanda</p>
+          </div>
+        </div>
+    `, 'System notification email');
+};
