@@ -1,7 +1,8 @@
 import mongoose from 'mongoose';
 
 const packagingStockSchema = new mongoose.Schema({
-    vendor: { type: String, required: true, unique: true }, // ← unique per brand now
+    supplier: { type: String, required: true },
+    materialType: { type: String, required: true, default: 'Box' },
     pricePerBox: { type: Number, required: true },
     totalReceived: { type: Number, required: true, default: 0 },
     quantityAvailable: { type: Number, required: true, default: 0 },
@@ -27,6 +28,20 @@ const packagingStockSchema = new mongoose.Schema({
         }
     ]
 }, { timestamps: true });
+
+// Compound index to prevent duplicate material types from same supplier
+packagingStockSchema.index({ supplier: 1, materialType: 1 }, { unique: true });
+
+// Virtual getter/setter for backward compatibility with 'vendor'
+packagingStockSchema.virtual('vendor').get(function() {
+    return this.supplier;
+}).set(function(v) {
+    this.supplier = v;
+});
+
+// Ensure virtuals are serialized
+packagingStockSchema.set('toJSON', { virtuals: true });
+packagingStockSchema.set('toObject', { virtuals: true });
 
 const PackagingStock = mongoose.model('PackagingStock', packagingStockSchema);
 export default PackagingStock;

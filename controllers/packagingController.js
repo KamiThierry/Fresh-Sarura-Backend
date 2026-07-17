@@ -24,7 +24,9 @@ export const getPackagingSummary = async (req, res) => {
                 totalStockValue,
                 lots: lots.map(l => ({
                     _id: l._id,
-                    vendor: l.vendor,
+                    vendor: l.supplier,
+                    supplier: l.supplier,
+                    materialType: l.materialType,
                     pricePerBox: l.pricePerBox,
                     quantityAvailable: l.quantityAvailable,
                     receivedDate: l.receivedDate,
@@ -49,28 +51,34 @@ export const getAllPackagingStock = async (req, res) => {
     }
 };
 
-// POST /api/v1/packaging — create new vendor/brand (first time only)
+// POST /api/v1/packaging — create new supplier packaging material
 export const receivePackagingStock = async (req, res) => {
     try {
-        const { vendor, pricePerBox, quantityReceived, receivedDate, notes } = req.body;
-        if (!vendor || !pricePerBox || !quantityReceived || !receivedDate) {
-            return res.status(400).json({ message: 'vendor, pricePerBox, quantityReceived, and receivedDate are required.' });
+        const { supplier, vendor, materialType, pricePerBox, quantityReceived, receivedDate, notes } = req.body;
+        const effectiveSupplier = (supplier || vendor || '').trim();
+        const effectiveMaterialType = (materialType || 'Box').trim();
+
+        if (!effectiveSupplier || !pricePerBox || !quantityReceived || !receivedDate) {
+            return res.status(400).json({ message: 'supplier, pricePerBox, quantityReceived, and receivedDate are required.' });
         }
 
-        // Check if vendor already exists
-        const existing = await PackagingStock.findOne({ vendor: vendor.trim() });
+        // Check if supplier already has this material type
+        const existing = await PackagingStock.findOne({ 
+            supplier: effectiveSupplier, 
+            materialType: effectiveMaterialType 
+        });
         if (existing) {
             return res.status(409).json({
-                message: `"${vendor}" already exists. Use the Restock option to add more boxes to this vendor.`,
+                message: `"${effectiveSupplier}" already has a delivery for "${effectiveMaterialType}". Use the Restock option to add more quantity to this delivery.`,
                 code: 'VENDOR_EXISTS',
                 existingId: existing._id,
             });
         }
 
         const lot = await PackagingStock.create({
-            vendor: vendor.trim(),
+            supplier: effectiveSupplier,
+            materialType: effectiveMaterialType,
             pricePerBox,
-            quantityReceived,
             totalReceived: quantityReceived,
             quantityAvailable: quantityReceived,
             receivedDate,
@@ -89,7 +97,7 @@ export const receivePackagingStock = async (req, res) => {
             module: 'Inventory',
             action: 'Packaging Stock Created',
             actor: req.user.name,
-            description: `${quantityReceived} boxes of ${vendor} added at ${pricePerBox} Rwf/box`,
+            description: `${quantityReceived} ${effectiveMaterialType}s of ${effectiveSupplier} added at ${pricePerBox} Rwf/unit`,
             severity: 'INFO',
         });
 
@@ -99,7 +107,7 @@ export const receivePackagingStock = async (req, res) => {
     }
 };
 
-// PATCH /api/v1/packaging/:id/restock — add more boxes to existing vendor
+// PATCH /api/v1/packaging/:id/restock — add more boxes to existing supplier
 export const restockPackagingStock = async (req, res) => {
     try {
         const { quantityAdded, pricePerBox, notes } = req.body;
@@ -110,7 +118,6 @@ export const restockPackagingStock = async (req, res) => {
         const lot = await PackagingStock.findById(req.params.id);
         if (!lot) return res.status(404).json({ message: 'Packaging stock not found.' });
 
-        // Update price if a new price was provided
         const effectivePrice = pricePerBox || lot.pricePerBox;
 
         lot.quantityAvailable += quantityAdded;
@@ -131,7 +138,7 @@ export const restockPackagingStock = async (req, res) => {
             module: 'Inventory',
             action: 'Packaging Stock Restocked',
             actor: req.user.name,
-            description: `${quantityAdded} boxes added to ${lot.vendor} — new total: ${lot.quantityAvailable}`,
+            description: `${quantityAdded} units added to ${lot.supplier} (${lot.materialType}) — new total: ${lot.quantityAvailable}`,
             severity: 'INFO',
         });
 
@@ -150,7 +157,6 @@ export const consumePackagingStock = async (req, res) => {
             return res.status(400).json({ status: 'error', message: 'boxesNeeded must be greater than 0.' });
         }
 
-        // Build lot list — selected lot first, then others by FIFO
         let lots = [];
         if (lotId) {
             const selectedLot = await PackagingStock.findOne({
@@ -158,7 +164,6 @@ export const consumePackagingStock = async (req, res) => {
             });
             if (selectedLot) lots.push(selectedLot);
         }
-        // Add remaining active lots (excluding already added)
         const otherLots = await PackagingStock.find({
             status: 'active',
             quantityAvailable: { $gt: 0 },
@@ -172,7 +177,7 @@ export const consumePackagingStock = async (req, res) => {
             return res.status(400).json({
                 status: 'error',
                 code: 'INSUFFICIENT_BOXES',
-                message: `Only ${totalAvailable} boxes available. ${boxesNeeded} requested.`,
+                message: `Only ${totalAvailable} units available. ${boxesNeeded} requested.`,
                 available: totalAvailable,
             });
         }
@@ -197,7 +202,7 @@ export const consumePackagingStock = async (req, res) => {
             module: 'Inventory',
             action: 'Packaging Stock Consumed',
             actor: req.user.name,
-            description: `${boxesNeeded} boxes consumed${exportBatchRef ? ` for ${exportBatchRef}` : ''}`,
+            description: `${boxesNeeded} units consumed${exportBatchRef ? ` for ${exportBatchRef}` : ''}`,
             severity: 'INFO',
         });
 
@@ -207,20 +212,21 @@ export const consumePackagingStock = async (req, res) => {
     }
 };
 
-// PATCH /api/v1/packaging/:id — update a packaging vendor record
+// PATCH /api/v1/packaging/:id — update a packaging supplier record
 export const updatePackagingStock = async (req, res) => {
     try {
-        const { vendor, pricePerBox, totalReceived, receivedDate, notes } = req.body;
+        const { supplier, vendor, materialType, pricePerBox, totalReceived, quantityReceived, receivedDate, notes } = req.body;
         const lot = await PackagingStock.findById(req.params.id);
 
         if (!lot) {
             return res.status(404).json({ status: 'error', message: 'Packaging lot not found' });
         }
 
-        // Adjust available quantity by the same difference
+        const effectiveTotalReceived = totalReceived !== undefined ? totalReceived : quantityReceived;
+
         let newAvailable = lot.quantityAvailable;
-        if (totalReceived !== undefined) {
-            const diff = totalReceived - lot.totalReceived;
+        if (effectiveTotalReceived !== undefined) {
+            const diff = effectiveTotalReceived - lot.totalReceived;
             newAvailable = lot.quantityAvailable + diff;
 
             if (newAvailable < 0) {
@@ -228,11 +234,12 @@ export const updatePackagingStock = async (req, res) => {
             }
         }
 
-        lot.vendor = vendor || lot.vendor;
+        lot.supplier = supplier || vendor || lot.supplier;
+        lot.materialType = materialType || lot.materialType;
         lot.pricePerBox = pricePerBox || lot.pricePerBox;
         
-        if (totalReceived !== undefined) {
-            lot.totalReceived = totalReceived;
+        if (effectiveTotalReceived !== undefined) {
+            lot.totalReceived = effectiveTotalReceived;
             lot.quantityAvailable = newAvailable;
             lot.status = newAvailable === 0 ? 'depleted' : 'active';
         }
@@ -246,7 +253,7 @@ export const updatePackagingStock = async (req, res) => {
             module: 'Inventory',
             action: 'Packaging Stock Updated',
             actor: req.user.name,
-            description: `Updated packaging stock for ${lot.vendor}`,
+            description: `Updated packaging stock for ${lot.supplier} (${lot.materialType})`,
             severity: 'INFO',
         });
 
@@ -275,7 +282,7 @@ export const deletePackagingStock = async (req, res) => {
             module: 'Inventory',
             action: 'Packaging Stock Deleted',
             actor: req.user.name,
-            description: `Deleted packaging stock for ${lot.vendor}`,
+            description: `Deleted packaging stock for ${lot.supplier} (${lot.materialType})`,
             severity: 'WARNING',
         });
 
