@@ -7,21 +7,28 @@ export const getPackagingSummary = async (req, res) => {
         const lots = await PackagingStock.find({ status: 'active' }).sort({ createdAt: 1 });
 
         const totalAvailable = lots.reduce((sum, l) => sum + l.quantityAvailable, 0);
-        const weightedPrice = totalAvailable > 0
-            ? lots.reduce((sum, l) => sum + (l.pricePerBox * l.quantityAvailable), 0) / totalAvailable
-            : 0;
+
+        // Current price = price from the most recent restock across all active lots
+        const allRestocks = lots.flatMap(l =>
+            (l.restockHistory?.length ? l.restockHistory : [{ pricePerBox: l.pricePerBox, date: l.receivedDate }])
+        ).sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        const currentPricePerBox = allRestocks[0]?.pricePerBox || 0;
+        const totalStockValue = lots.reduce((sum, l) => sum + (l.quantityAvailable * l.pricePerBox), 0);
 
         res.json({
             status: 'success',
             data: {
                 totalAvailableBoxes: totalAvailable,
-                averagePricePerBox: Math.round(weightedPrice),
+                currentPricePerBox,
+                totalStockValue,
                 lots: lots.map(l => ({
                     _id: l._id,
                     vendor: l.vendor,
                     pricePerBox: l.pricePerBox,
                     quantityAvailable: l.quantityAvailable,
                     receivedDate: l.receivedDate,
+                    restockHistory: l.restockHistory,
                 }))
             }
         });
