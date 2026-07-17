@@ -42,36 +42,95 @@ export const getAllPackagingStock = async (req, res) => {
     }
 };
 
-// POST /api/v1/packaging — receive new delivery
+// POST /api/v1/packaging — create new vendor/brand (first time only)
 export const receivePackagingStock = async (req, res) => {
     try {
         const { vendor, pricePerBox, quantityReceived, receivedDate, notes } = req.body;
-
         if (!vendor || !pricePerBox || !quantityReceived || !receivedDate) {
-            return res.status(400).json({ status: 'error', message: 'vendor, pricePerBox, quantityReceived, and receivedDate are required.' });
+            return res.status(400).json({ message: 'vendor, pricePerBox, quantityReceived, and receivedDate are required.' });
+        }
+
+        // Check if vendor already exists
+        const existing = await PackagingStock.findOne({ vendor: vendor.trim() });
+        if (existing) {
+            return res.status(409).json({
+                message: `"${vendor}" already exists. Use the Restock option to add more boxes to this vendor.`,
+                code: 'VENDOR_EXISTS',
+                existingId: existing._id,
+            });
         }
 
         const lot = await PackagingStock.create({
-            vendor,
+            vendor: vendor.trim(),
             pricePerBox,
             quantityReceived,
+            totalReceived: quantityReceived,
             quantityAvailable: quantityReceived,
             receivedDate,
             notes,
             receivedBy: req.user._id,
+            restockHistory: [{
+                quantityAdded: quantityReceived,
+                pricePerBox,
+                date: receivedDate,
+                addedBy: req.user._id,
+                notes: notes || 'Initial stock',
+            }]
         });
 
         await createEventLog({
-            module: 'Production & QC',
-            action: 'Packaging Stock Received',
+            module: 'Inventory',
+            action: 'Packaging Stock Created',
             actor: req.user.name,
-            description: `${quantityReceived} boxes received from ${vendor} at ${pricePerBox} Rwf/box`,
+            description: `${quantityReceived} boxes of ${vendor} added at ${pricePerBox} Rwf/box`,
             severity: 'INFO',
         });
 
         res.status(201).json({ status: 'success', data: lot });
     } catch (err) {
-        res.status(500).json({ status: 'error', message: err.message });
+        res.status(500).json({ message: err.message });
+    }
+};
+
+// PATCH /api/v1/packaging/:id/restock — add more boxes to existing vendor
+export const restockPackagingStock = async (req, res) => {
+    try {
+        const { quantityAdded, pricePerBox, notes } = req.body;
+        if (!quantityAdded || quantityAdded <= 0) {
+            return res.status(400).json({ message: 'quantityAdded must be greater than 0.' });
+        }
+
+        const lot = await PackagingStock.findById(req.params.id);
+        if (!lot) return res.status(404).json({ message: 'Packaging stock not found.' });
+
+        // Update price if a new price was provided
+        const effectivePrice = pricePerBox || lot.pricePerBox;
+
+        lot.quantityAvailable += quantityAdded;
+        lot.totalReceived += quantityAdded;
+        lot.pricePerBox = effectivePrice;
+        lot.status = 'active';
+        lot.restockHistory.push({
+            quantityAdded,
+            pricePerBox: effectivePrice,
+            date: new Date(),
+            addedBy: req.user._id,
+            notes: notes || '',
+        });
+
+        await lot.save();
+
+        await createEventLog({
+            module: 'Inventory',
+            action: 'Packaging Stock Restocked',
+            actor: req.user.name,
+            description: `${quantityAdded} boxes added to ${lot.vendor} — new total: ${lot.quantityAvailable}`,
+            severity: 'INFO',
+        });
+
+        res.json({ status: 'success', data: lot });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
     }
 };
 
@@ -141,10 +200,10 @@ export const consumePackagingStock = async (req, res) => {
     }
 };
 
-// PATCH /api/v1/packaging/:id — update a packaging lot
+// PATCH /api/v1/packaging/:id — update a packaging vendor record
 export const updatePackagingStock = async (req, res) => {
     try {
-        const { vendor, pricePerBox, quantityReceived, receivedDate, notes } = req.body;
+        const { vendor, pricePerBox, totalReceived, receivedDate, notes } = req.body;
         const lot = await PackagingStock.findById(req.params.id);
 
         if (!lot) {
@@ -153,8 +212,8 @@ export const updatePackagingStock = async (req, res) => {
 
         // Adjust available quantity by the same difference
         let newAvailable = lot.quantityAvailable;
-        if (quantityReceived !== undefined) {
-            const diff = quantityReceived - lot.quantityReceived;
+        if (totalReceived !== undefined) {
+            const diff = totalReceived - lot.totalReceived;
             newAvailable = lot.quantityAvailable + diff;
 
             if (newAvailable < 0) {
@@ -165,8 +224,8 @@ export const updatePackagingStock = async (req, res) => {
         lot.vendor = vendor || lot.vendor;
         lot.pricePerBox = pricePerBox || lot.pricePerBox;
         
-        if (quantityReceived !== undefined) {
-            lot.quantityReceived = quantityReceived;
+        if (totalReceived !== undefined) {
+            lot.totalReceived = totalReceived;
             lot.quantityAvailable = newAvailable;
             lot.status = newAvailable === 0 ? 'depleted' : 'active';
         }
