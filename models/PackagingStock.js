@@ -29,19 +29,20 @@ const packagingStockSchema = new mongoose.Schema({
     ]
 }, { timestamps: true });
 
-// Compound index to prevent duplicate material types from same supplier
-packagingStockSchema.index({ supplier: 1, materialType: 1 }, { unique: true });
-
-// Virtual getter/setter for backward compatibility with 'vendor'
-packagingStockSchema.virtual('vendor').get(function() {
-    return this.supplier;
-}).set(function(v) {
-    this.supplier = v;
+// Migrate legacy docs: copy 'vendor' → 'supplier' before validation
+packagingStockSchema.pre('validate', function (next) {
+    // _doc holds the raw DB fields — virtual 'vendor' getter would just return this.supplier
+    if (!this.supplier && this._doc.vendor) {
+        this.supplier = this._doc.vendor;
+    }
+    if (!this.materialType) {
+        this.materialType = 'Box';
+    }
+    next();
 });
 
-// Ensure virtuals are serialized
-packagingStockSchema.set('toJSON', { virtuals: true });
-packagingStockSchema.set('toObject', { virtuals: true });
+// Compound index to prevent duplicate material types from same supplier
+packagingStockSchema.index({ supplier: 1, materialType: 1 }, { unique: true });
 
 const PackagingStock = mongoose.model('PackagingStock', packagingStockSchema);
 export default PackagingStock;

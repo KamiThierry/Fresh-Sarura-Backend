@@ -24,7 +24,6 @@ export const getPackagingSummary = async (req, res) => {
                 totalStockValue,
                 lots: lots.map(l => ({
                     _id: l._id,
-                    vendor: l.supplier,
                     supplier: l.supplier,
                     materialType: l.materialType,
                     pricePerBox: l.pricePerBox,
@@ -54,8 +53,8 @@ export const getAllPackagingStock = async (req, res) => {
 // POST /api/v1/packaging — create new supplier packaging material
 export const receivePackagingStock = async (req, res) => {
     try {
-        const { supplier, vendor, materialType, pricePerBox, quantityReceived, receivedDate, notes } = req.body;
-        const effectiveSupplier = (supplier || vendor || '').trim();
+        const { supplier, materialType, pricePerBox, quantityReceived, receivedDate, notes } = req.body;
+        const effectiveSupplier = (supplier || '').trim();
         const effectiveMaterialType = (materialType || 'Box').trim();
 
         if (!effectiveSupplier || !pricePerBox || !quantityReceived || !receivedDate) {
@@ -70,7 +69,7 @@ export const receivePackagingStock = async (req, res) => {
         if (existing) {
             return res.status(409).json({
                 message: `"${effectiveSupplier}" already has a delivery for "${effectiveMaterialType}". Use the Restock option to add more quantity to this delivery.`,
-                code: 'VENDOR_EXISTS',
+                code: 'SUPPLIER_EXISTS',
                 existingId: existing._id,
             });
         }
@@ -117,6 +116,14 @@ export const restockPackagingStock = async (req, res) => {
 
         const lot = await PackagingStock.findById(req.params.id);
         if (!lot) return res.status(404).json({ message: 'Packaging stock not found.' });
+
+        // Backfill supplier for legacy docs that only have 'vendor'
+        if (!lot.supplier && lot._doc.vendor) {
+            lot.supplier = lot._doc.vendor;
+        }
+        if (!lot.materialType) {
+            lot.materialType = 'Box';
+        }
 
         const effectivePrice = pricePerBox || lot.pricePerBox;
 
@@ -185,6 +192,9 @@ export const consumePackagingStock = async (req, res) => {
         let remaining = boxesNeeded;
         for (const lot of lots) {
             if (remaining <= 0) break;
+            // Backfill supplier for legacy docs
+            if (!lot.supplier && lot._doc.vendor) lot.supplier = lot._doc.vendor;
+            if (!lot.materialType) lot.materialType = 'Box';
             const deduct = Math.min(lot.quantityAvailable, remaining);
             lot.consumptionLog.push({
                 boxesUsed: deduct,
@@ -215,12 +225,16 @@ export const consumePackagingStock = async (req, res) => {
 // PATCH /api/v1/packaging/:id — update a packaging supplier record
 export const updatePackagingStock = async (req, res) => {
     try {
-        const { supplier, vendor, materialType, pricePerBox, totalReceived, quantityReceived, receivedDate, notes } = req.body;
+        const { supplier, materialType, pricePerBox, totalReceived, quantityReceived, receivedDate, notes } = req.body;
         const lot = await PackagingStock.findById(req.params.id);
 
         if (!lot) {
             return res.status(404).json({ status: 'error', message: 'Packaging lot not found' });
         }
+
+        // Backfill supplier for legacy docs
+        if (!lot.supplier && lot._doc.vendor) lot.supplier = lot._doc.vendor;
+        if (!lot.materialType) lot.materialType = 'Box';
 
         const effectiveTotalReceived = totalReceived !== undefined ? totalReceived : quantityReceived;
 
@@ -234,7 +248,7 @@ export const updatePackagingStock = async (req, res) => {
             }
         }
 
-        lot.supplier = supplier || vendor || lot.supplier;
+        lot.supplier = supplier || lot.supplier;
         lot.materialType = materialType || lot.materialType;
         lot.pricePerBox = pricePerBox || lot.pricePerBox;
         
