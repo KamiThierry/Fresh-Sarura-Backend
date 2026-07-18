@@ -7,20 +7,14 @@ export const getPackagingSummary = async (req, res) => {
         const lots = await PackagingStock.find({ status: 'active' }).sort({ createdAt: 1 });
 
         const totalAvailable = lots.reduce((sum, l) => sum + l.quantityAvailable, 0);
-
-        // Current price = price from the most recent restock across all active lots
-        const allRestocks = lots.flatMap(l =>
-            (l.restockHistory?.length ? l.restockHistory : [{ pricePerBox: l.pricePerBox, date: l.receivedDate }])
-        ).sort((a, b) => new Date(b.date) - new Date(a.date));
-
-        const currentPricePerBox = allRestocks[0]?.pricePerBox || 0;
         const totalStockValue = lots.reduce((sum, l) => sum + (l.quantityAvailable * l.pricePerBox), 0);
+        const averagePricePerBox = totalAvailable > 0 ? Math.round(totalStockValue / totalAvailable) : 0;
 
         res.json({
             status: 'success',
             data: {
                 totalAvailableBoxes: totalAvailable,
-                currentPricePerBox,
+                averagePricePerBox,
                 totalStockValue,
                 lots: lots.map(l => ({
                     _id: l._id,
@@ -44,7 +38,16 @@ export const getAllPackagingStock = async (req, res) => {
         const lots = await PackagingStock.find()
             .populate('receivedBy', 'name')
             .sort({ createdAt: -1 });
-        res.json({ status: 'success', data: lots });
+
+        const mappedLots = lots.map(lot => {
+            const lotObj = lot.toObject();
+            if (!lotObj.supplier && lot._doc.vendor) {
+                lotObj.supplier = lot._doc.vendor;
+            }
+            return lotObj;
+        });
+
+        res.json({ status: 'success', data: mappedLots });
     } catch (err) {
         res.status(500).json({ status: 'error', message: err.message });
     }
