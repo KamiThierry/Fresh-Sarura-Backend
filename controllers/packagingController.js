@@ -225,6 +225,63 @@ export const consumePackagingStock = async (req, res) => {
     }
 };
 
+// Internal helper — called from exportController.createExportBatch, not exposed as its own route.
+// Validates ALL requested materials have sufficient stock BEFORE deducting ANY of them,
+// so a batch never ends up partially charged if the 3rd material runs short.
+export const consumeMultiplePackagingStock = async (materials, userId, exportBatchRef, session) => {
+    if (!Array.isArray(materials) || materials.length === 0) {
+        throw new Error('At least one packaging material is required.');
+    }
+
+    const lotIds = materials.map(m => m.lotId);
+    const lots = await PackagingStock.find({ _id: { $in: lotIds } }).session(session);
+    const lotMap = new Map(lots.map(l => [l._id.toString(), l]));
+
+    // Pass 1: validate everything first
+    const snapshot = [];
+    for (const m of materials) {
+        const lot = lotMap.get(String(m.lotId));
+        if (!lot) {
+            throw new Error(`Packaging lot ${m.lotId} not found.`);
+        }
+        if (!lot.supplier && lot._doc?.vendor) lot.supplier = lot._doc.vendor;
+        if (!lot.materialType) lot.materialType = 'Box';
+
+        const unitsUsed = Number(m.unitsUsed);
+        if (!unitsUsed || unitsUsed <= 0) {
+            throw new Error(`Invalid quantity for ${lot.supplier} (${lot.materialType}).`);
+        }
+        if (lot.status !== 'active' || lot.quantityAvailable < unitsUsed) {
+            throw new Error(`Insufficient stock for ${lot.supplier} (${lot.materialType}). Available: ${lot.quantityAvailable}, requested: ${unitsUsed}.`);
+        }
+
+        snapshot.push({
+            lotId: lot._id,
+            supplier: lot.supplier,
+            materialType: lot.materialType,
+            unitsUsed,
+            pricePerUnit: lot.pricePerBox,
+            subtotal: lot.pricePerBox * unitsUsed,
+        });
+    }
+
+    // Pass 2: everything validated — now safe to deduct
+    for (const item of snapshot) {
+        const lot = lotMap.get(String(item.lotId));
+        lot.quantityAvailable -= item.unitsUsed;
+        if (lot.quantityAvailable === 0) lot.status = 'depleted';
+        lot.consumptionLog.push({
+            boxesUsed: item.unitsUsed,
+            exportBatchRef: exportBatchRef || 'Export Batch',
+            consumedBy: userId,
+            consumedAt: new Date(),
+        });
+        await lot.save({ session });
+    }
+
+    return snapshot;
+};
+
 // PATCH /api/v1/packaging/:id — update a packaging supplier record
 export const updatePackagingStock = async (req, res) => {
     try {

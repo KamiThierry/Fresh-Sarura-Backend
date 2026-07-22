@@ -1,48 +1,80 @@
+import mongoose from 'mongoose';
 import ExportBatch from '../models/ExportBatch.js';
 import Shipment from '../models/Shipment.js';
 import ExportDocument from '../models/ExportDocument.js';
 import ProcessingBatch from '../models/ProcessingBatch.js';
+import PackagingStock from '../models/PackagingStock.js';
 import EventLog from '../models/EventLog.js';
 import { notifyByRole } from './notificationController.js';
 import { createEventLog } from './eventLogController.js';
+import { consumeMultiplePackagingStock } from './packagingController.js';
 
 // ── EXPORT BATCHES ────────────────────────────────────────────────────────────
 
 // POST /api/v1/export-batches  ← PM creates a packed batch from stock
 export const createExportBatch = async (req, res) => {
+    const session = await mongoose.startSession();
     try {
+        session.startTransaction();
+
         const {
             processingBatchId, cycleId, cropName,
             clientName, destination, gradeLabel,
             allocatedWeightKg, boxCount, weightPerBoxKg,
             targetShipmentDate,
+            packagingMaterials, // NEW — [{ lotId, unitsUsed }, ...]
         } = req.body;
 
         if (!processingBatchId || !cropName || !clientName || !destination || !allocatedWeightKg || !boxCount || !weightPerBoxKg) {
+            await session.abortTransaction();
             return res.status(400).json({ status: 'error', message: 'processingBatchId, cropName, clientName, destination, allocatedWeightKg, boxCount, weightPerBoxKg are required.' });
         }
 
-        // Verify the processing batch exists and is Done
-        const stock = await ProcessingBatch.findById(processingBatchId);
-        if (!stock) return res.status(404).json({ status: 'error', message: 'Stock item not found.' });
-        if (stock.status !== 'Done') return res.status(400).json({ status: 'error', message: 'Stock item is not yet processed.' });
+        if (!Array.isArray(packagingMaterials) || packagingMaterials.length === 0) {
+            await session.abortTransaction();
+            return res.status(400).json({ status: 'error', message: 'At least one packaging material must be selected.' });
+        }
 
-        // Use cycleId from the processing batch — don't require it from body
+        const stock = await ProcessingBatch.findById(processingBatchId).session(session);
+        if (!stock) {
+            await session.abortTransaction();
+            return res.status(404).json({ status: 'error', message: 'Stock item not found.' });
+        }
+        if (stock.status !== 'Done') {
+            await session.abortTransaction();
+            return res.status(400).json({ status: 'error', message: 'Stock item is not yet processed.' });
+        }
+
         const resolvedCycleId = cycleId || stock.cycleId;
 
-        const batch = await ExportBatch.create({
+        // Generate the batchId here (not in the pre-save hook) so we can use it
+        // as the exportBatchRef in the packaging consumption log.
+        const batchId = `EB-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
+        // Consume packaging FIRST — throws (and aborts the transaction) if any material is short
+        const packagingSnapshot = await consumeMultiplePackagingStock(
+            packagingMaterials, req.user._id, batchId, session
+        );
+        const totalPackagingCost = packagingSnapshot.reduce((sum, p) => sum + p.subtotal, 0);
+
+        const [batch] = await ExportBatch.create([{
+            batchId,
             processingBatchId,
             cycleId: resolvedCycleId,
             cropName,
             clientName,
             destination,
-            gradeLabel: gradeLabel,
+            gradeLabel,
             allocatedWeightKg: Number(allocatedWeightKg),
             boxCount: Number(boxCount),
             weightPerBoxKg: Number(weightPerBoxKg),
             targetShipmentDate: targetShipmentDate ? new Date(targetShipmentDate) : undefined,
+            packagingMaterials: packagingSnapshot,
+            totalPackagingCost,
             createdBy: req.user._id,
-        });
+        }], { session });
+
+        await session.commitTransaction();
 
         res.status(201).json({ status: 'success', data: batch });
 
@@ -50,17 +82,21 @@ export const createExportBatch = async (req, res) => {
             module: 'Production & QC',
             action: 'Export Batch Created',
             severity: 'INFO',
-            description: `Export batch created: ${cropName} — ${boxCount} boxes for ${clientName} to ${destination}`,
+            description: `Export batch created: ${cropName} — ${boxCount} boxes for ${clientName} to ${destination}. Packaging cost: ${totalPackagingCost} Rwf across ${packagingSnapshot.length} material(s).`,
             actor: req.user.name,
             metadata: {
                 batchId: batch._id,
                 cropName, clientName,
                 destination, boxCount,
-                weightKg: allocatedWeightKg
+                weightKg: allocatedWeightKg,
+                totalPackagingCost,
             }
         });
     } catch (err) {
-        res.status(500).json({ status: 'error', message: err.message });
+        await session.abortTransaction();
+        res.status(400).json({ status: 'error', message: err.message });
+    } finally {
+        session.endSession();
     }
 };
 
